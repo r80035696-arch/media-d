@@ -16,7 +16,7 @@ on:
       quality:
         description: 'best | 1080 | 720 | 480 | audio'
         required: false
-        default: '1080'
+        default: 'best'
         type: string
       mode:
         description: 'collection'
@@ -100,7 +100,9 @@ jobs:
                   data = AESGCM(key).decrypt(blob[:12], blob[12:], None)
                   with open("cookies.txt", "wb") as f: f.write(data)
                   cookies_path = "cookies.txt"
-              except Exception: pass
+                  print("Enumerate: cookies.txt created successfully.")
+              except Exception as ex:
+                  print(f"Enumerate cookies notice: {ex}")
 
           init_opts = {
               "extract_flat": True,
@@ -272,9 +274,11 @@ jobs:
               key = bytes.fromhex(os.environ["COOKIE_KEY"].strip())
               data = AESGCM(key).decrypt(blob[:12], blob[12:], None)
               with open("cookies.txt", "wb") as f: f.write(data)
-              print("Cookies decrypted successfully!")
+              size = os.path.getsize("cookies.txt")
+              print(f"SUCCESS: cookies.txt written successfully ({size} bytes).")
           except Exception as ex:
-              print(f"::warning::Cookies decryption failed: {ex}")
+              print(f"::error::Cookies decryption FAILED: {ex}")
+              sys.exit(1)
           PY
 
       - name: Download batch
@@ -291,13 +295,13 @@ jobs:
               FMT_ARGS="-f bestaudio/best -x --audio-format mp3 --audio-quality 0"
               ;;
             *1080*)
-              FMT_ARGS="-f bv*+ba/b --merge-output-format mp4 -S res:1080,ext:mp4:m4a"
+              FMT_ARGS="-f bv*[height<=1080]+ba/b[height<=1080]/bv*+ba/b --merge-output-format mp4"
               ;;
             *720*)
-              FMT_ARGS="-f bv*+ba/b --merge-output-format mp4 -S res:720,ext:mp4:m4a"
+              FMT_ARGS="-f bv*[height<=720]+ba/b[height<=720]/bv*+ba/b --merge-output-format mp4"
               ;;
             *480*)
-              FMT_ARGS="-f bv*[height<=?480]+ba/bv*[width<=?480]+ba/b[height<=?480]/b[width<=?480]/bv*+ba/b --merge-output-format mp4 -S res:480,ext:mp4:m4a"
+              FMT_ARGS="-f bv*[height<=480]+ba/b[height<=480]/bv*+ba/b --merge-output-format mp4"
               ;;
             *)
               FMT_ARGS="-f bv*+ba/b --merge-output-format mp4"
@@ -305,7 +309,12 @@ jobs:
           esac
 
           COOKIE_ARGS=""
-          if [ -f cookies.txt ]; then COOKIE_ARGS="--cookies cookies.txt"; fi
+          if [ -f cookies.txt ]; then
+            echo ">>> Active Cookiefile detected: $(wc -l < cookies.txt) lines."
+            COOKIE_ARGS="--cookies cookies.txt"
+          else
+            echo ">>> WARNING: Running without cookies.txt!"
+          fi
 
           printf '%s' "$BATCH_JSON" | python -c "
           import json, sys
@@ -328,8 +337,8 @@ jobs:
               -- "$URL"
           }
 
-          CLIENT_ANDROID="youtube:player_client=android"
-          CLIENT_IOS="youtube:player_client=ios"
+          CLIENT_WEB="youtube:player_client=web,web_creator"
+          CLIENT_TV="youtube:player_client=tv"
 
           while IFS=$'\t' read -r IDX URL ALBUM; do
             [ -z "$URL" ] && continue
@@ -337,11 +346,12 @@ jobs:
             TMPL="out/${IDX} - %(title).100B [%(id)s].%(ext)s"
             if [ -n "$ALBUM" ]; then TMPL="out/$ALBUM/${IDX} - %(title).100B [%(id)s].%(ext)s"; fi
 
-            # עקיפת 403 Forbidden באמצעות לקוחות אנדרואיד ו-iOS
-            if   run_ytdlp "$TMPL" $COOKIE_ARGS --extractor-args "$CLIENT_ANDROID"; then :
-            elif { sleep 3; run_ytdlp "$TMPL" $COOKIE_ARGS --extractor-args "$CLIENT_IOS"; }; then :
+            # ניסיון 1: לקוח ווב טבעי עם העוגיות
+            if   run_ytdlp "$TMPL" $COOKIE_ARGS --extractor-args "$CLIENT_WEB"; then :
+            # ניסיון 2: לקוח טלוויזיה (מצוין לעקיפת הגבלות דפדפן)
+            elif { sleep 3; run_ytdlp "$TMPL" $COOKIE_ARGS --extractor-args "$CLIENT_TV"; }; then :
+            # ניסיון 3: התחזות כרום
             elif { sleep 3; run_ytdlp "$TMPL" $COOKIE_ARGS --impersonate chrome; }; then :
-            elif { sleep 3; run_ytdlp "$TMPL" $COOKIE_ARGS; }; then :
             else
               echo "::error::Failed to download item: $URL"
             fi
