@@ -154,16 +154,13 @@ jobs:
           }
           if cookies_path: scan_opts["cookiefile"] = cookies_path
 
-          # רשימת שלילה קריטית (סעיף ג')
           NEGATIVE_KEYWORDS = [
               "u-20", "u20", "u-17", "u17", "women", "wwc",
               "club world cup", "club wc", "fifae", "interactive",
               "futsal", "beach soccer", "qualifier"
           ]
 
-          # רשימת ביטויים חיוביים מלאה (סעיפים א' + ב')
           POSITIVE_KEYWORDS = [
-              # סעיף א' - ביטויים כלליים של מונדיאל 2022
               "2022 fifa world cup",
               "fifa world cup qatar 2022",
               "2022 world cup",
@@ -172,7 +169,6 @@ jobs:
               "fifa world cup 2022",
               "world cup 2022",
               "world cup qatar 2022",
-              # סעיף ב' - סדרות ייחודיות, כדורים, שירים ושחקני משחק
               "player of the match",
               "@budweiser",
               "al rihla",
@@ -201,11 +197,9 @@ jobs:
                       if not item_id or item_id in seen_ids or item_id in completed_ids:
                           continue
 
-                      # 1. סינון שלילה: האם זה טורניר אחר, נשים, נוער או מוקדמות?
                       if any(neg in title for neg in NEGATIVE_KEYWORDS):
                           continue
 
-                      # 2. סינון חיובי: האם זה מכיל את אחד מביטויי מונדיאל 2022 (א' או ב')?
                       if not any(pos in title for pos in POSITIVE_KEYWORDS):
                           continue
 
@@ -273,10 +267,15 @@ jobs:
           python - <<'PY'
           import base64, os, sys
           from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-          blob = base64.b64decode(os.environ["COOKIES_ENC"])
-          key = bytes.fromhex(os.environ["COOKIE_KEY"].strip())
-          data = AESGCM(key).decrypt(blob[:12], blob[12:], None)
-          with open("cookies.txt", "wb") as f: f.write(data)
+          try:
+              blob = base64.b64decode(os.environ["COOKIES_ENC"].strip())
+              key = bytes.fromhex(os.environ["COOKIE_KEY"].strip())
+              data = AESGCM(key).decrypt(blob[:12], blob[12:], None)
+              with open("cookies.txt", "wb") as f: f.write(data)
+              print("Cookies decrypted successfully!")
+          except Exception as ex:
+              print(f"::error::Cookies decryption failed: {ex}")
+              sys.exit(1)
           PY
 
       - name: Download batch
@@ -316,6 +315,7 @@ jobs:
               print(f'{idx:02d}\t' + it['url'] + '\t' + (it.get('album') or ''))
           " > batch.tsv
 
+          # פקודת ההורדה המקורית שלך במדויק (1:1)
           run_ytdlp() {
             local tmpl="$1"; shift
             yt-dlp \
@@ -324,7 +324,6 @@ jobs:
               --retries 5 --fragment-retries 10 \
               --sleep-requests 2.0 \
               --embed-metadata \
-              --write-subs --write-auto-subs --sub-langs "he.*,iw.*" --embed-subs \
               --remote-components ejs:github \
               --ffmpeg-location "$FFMPEG_BIN" \
               -o "$tmpl" \
