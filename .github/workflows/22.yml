@@ -16,7 +16,7 @@ on:
       quality:
         description: 'best | 1080 | 720 | 480 | audio'
         required: false
-        default: 'best'
+        default: '1080'
         type: string
       mode:
         description: 'collection'
@@ -68,7 +68,7 @@ jobs:
           COOKIE_KEY: ${{ secrets.COOKIE_KEY }}
           MAX_PER_RUN: ${{ inputs.max_items || '1500' }}
         run: |
-          python -m pip install --quiet --upgrade pip yt-dlp cryptography
+          python -m pip install --quiet --upgrade pip yt-dlp cryptography curl_cffi
           python - <<'PY'
           import base64, json, os, re, secrets, sys
           from urllib.parse import urlsplit, urlunsplit
@@ -312,8 +312,6 @@ jobs:
           if [ -f cookies.txt ]; then
             echo ">>> Active Cookiefile detected: $(wc -l < cookies.txt) lines."
             COOKIE_ARGS="--cookies cookies.txt"
-          else
-            echo ">>> WARNING: Running without cookies.txt!"
           fi
 
           printf '%s' "$BATCH_JSON" | python -c "
@@ -337,8 +335,9 @@ jobs:
               -- "$URL"
           }
 
-          CLIENT_WEB="youtube:player_client=web,web_creator"
-          CLIENT_TV="youtube:player_client=tv"
+          # הפתרון הרשמי ל-SABR-only: mweb עם impersonate chrome
+          CLIENT_MWEB="youtube:player_client=mweb,web_safari"
+          CLIENT_SAFARI="youtube:player_client=web_safari"
 
           while IFS=$'\t' read -r IDX URL ALBUM; do
             [ -z "$URL" ] && continue
@@ -346,12 +345,12 @@ jobs:
             TMPL="out/${IDX} - %(title).100B [%(id)s].%(ext)s"
             if [ -n "$ALBUM" ]; then TMPL="out/$ALBUM/${IDX} - %(title).100B [%(id)s].%(ext)s"; fi
 
-            # ניסיון 1: לקוח ווב טבעי עם העוגיות
-            if   run_ytdlp "$TMPL" $COOKIE_ARGS --extractor-args "$CLIENT_WEB"; then :
-            # ניסיון 2: לקוח טלוויזיה (מצוין לעקיפת הגבלות דפדפן)
-            elif { sleep 3; run_ytdlp "$TMPL" $COOKIE_ARGS --extractor-args "$CLIENT_TV"; }; then :
-            # ניסיון 3: התחזות כרום
-            elif { sleep 3; run_ytdlp "$TMPL" $COOKIE_ARGS --impersonate chrome; }; then :
+            # ניסיון 1: mweb + impersonate chrome (עוקף את SABR ומקבל כתובות וידאו מלאות)
+            if   run_ytdlp "$TMPL" $COOKIE_ARGS --extractor-args "$CLIENT_MWEB" --impersonate chrome; then :
+            # ניסיון 2: web_safari
+            elif { sleep 3; run_ytdlp "$TMPL" $COOKIE_ARGS --extractor-args "$CLIENT_SAFARI" --impersonate chrome; }; then :
+            # ניסיון 3: ללא impersonate
+            elif { sleep 3; run_ytdlp "$TMPL" $COOKIE_ARGS --extractor-args "$CLIENT_MWEB"; }; then :
             else
               echo "::error::Failed to download item: $URL"
             fi
