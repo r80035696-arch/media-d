@@ -16,7 +16,7 @@ on:
       quality:
         description: 'best | 1080 | 720 | 480 | audio'
         required: false
-        default: 'best'
+        default: '1080'
         type: string
       mode:
         description: 'collection'
@@ -95,7 +95,7 @@ jobs:
           if cookies_enc and cookie_key:
               from cryptography.hazmat.primitives.ciphers.aead import AESGCM
               try:
-                  blob = base64.b64decode(cookies_enc)
+                  blob = base64.b64decode(cookies_enc.strip())
                   key = bytes.fromhex(cookie_key.strip())
                   data = AESGCM(key).decrypt(blob[:12], blob[12:], None)
                   with open("cookies.txt", "wb") as f: f.write(data)
@@ -274,8 +274,7 @@ jobs:
               with open("cookies.txt", "wb") as f: f.write(data)
               print("Cookies decrypted successfully!")
           except Exception as ex:
-              print(f"::error::Cookies decryption failed: {ex}")
-              sys.exit(1)
+              print(f"::warning::Cookies decryption failed: {ex}")
           PY
 
       - name: Download batch
@@ -315,7 +314,6 @@ jobs:
               print(f'{idx:02d}\t' + it['url'] + '\t' + (it.get('album') or ''))
           " > batch.tsv
 
-          # פקודת ההורדה המקורית שלך במדויק (1:1)
           run_ytdlp() {
             local tmpl="$1"; shift
             yt-dlp \
@@ -330,8 +328,8 @@ jobs:
               -- "$URL"
           }
 
-          ALT_CREATOR="youtube:player_client=web_creator,web"
-          ALT_EMBEDDED="youtube:player_client=web_embedded,web"
+          CLIENT_ANDROID="youtube:player_client=android"
+          CLIENT_IOS="youtube:player_client=ios"
 
           while IFS=$'\t' read -r IDX URL ALBUM; do
             [ -z "$URL" ] && continue
@@ -339,10 +337,11 @@ jobs:
             TMPL="out/${IDX} - %(title).100B [%(id)s].%(ext)s"
             if [ -n "$ALBUM" ]; then TMPL="out/$ALBUM/${IDX} - %(title).100B [%(id)s].%(ext)s"; fi
 
-            if   run_ytdlp "$TMPL" $COOKIE_ARGS; then :
-            elif { sleep 3; run_ytdlp "$TMPL" $COOKIE_ARGS --extractor-args "$ALT_CREATOR"; }; then :
-            elif { sleep 3; run_ytdlp "$TMPL" $COOKIE_ARGS --extractor-args "$ALT_EMBEDDED"; }; then :
+            # עקיפת 403 Forbidden באמצעות לקוחות אנדרואיד ו-iOS
+            if   run_ytdlp "$TMPL" $COOKIE_ARGS --extractor-args "$CLIENT_ANDROID"; then :
+            elif { sleep 3; run_ytdlp "$TMPL" $COOKIE_ARGS --extractor-args "$CLIENT_IOS"; }; then :
             elif { sleep 3; run_ytdlp "$TMPL" $COOKIE_ARGS --impersonate chrome; }; then :
+            elif { sleep 3; run_ytdlp "$TMPL" $COOKIE_ARGS; }; then :
             else
               echo "::error::Failed to download item: $URL"
             fi
