@@ -11,6 +11,7 @@ on:
       url:
         description: 'Channel URL'
         required: true
+        default: 'https://www.youtube.com/@fifa'
         type: string
       quality:
         description: 'best | 1080 | 720 | 480 | audio'
@@ -153,6 +154,37 @@ jobs:
           }
           if cookies_path: scan_opts["cookiefile"] = cookies_path
 
+          # רשימת שלילה קריטית (סעיף ג')
+          NEGATIVE_KEYWORDS = [
+              "u-20", "u20", "u-17", "u17", "women", "wwc",
+              "club world cup", "club wc", "fifae", "interactive",
+              "futsal", "beach soccer", "qualifier"
+          ]
+
+          # רשימת ביטויים חיוביים מלאה (סעיפים א' + ב')
+          POSITIVE_KEYWORDS = [
+              # סעיף א' - ביטויים כלליים של מונדיאל 2022
+              "2022 fifa world cup",
+              "fifa world cup qatar 2022",
+              "2022 world cup",
+              "qatar 2022",
+              "#qatar2022",
+              "fifa world cup 2022",
+              "world cup 2022",
+              "world cup qatar 2022",
+              # סעיף ב' - סדרות ייחודיות, כדורים, שירים ושחקני משחק
+              "player of the match",
+              "@budweiser",
+              "al rihla",
+              "al hilm",
+              "dreamers",
+              "hayya hayya",
+              "tukoh taka",
+              "arhbo",
+              "light the sky",
+              "ezz al arab"
+          ]
+
           items, seen_ids = [], set()
 
           for u in playlist_urls:
@@ -164,11 +196,23 @@ jobs:
                   for e in entries:
                       if not e: continue
                       item_id = e.get("id")
+                      title = (e.get("title") or "").lower()
+
                       if not item_id or item_id in seen_ids or item_id in completed_ids:
                           continue
+
+                      # 1. סינון שלילה: האם זה טורניר אחר, נשים, נוער או מוקדמות?
+                      if any(neg in title for neg in NEGATIVE_KEYWORDS):
+                          continue
+
+                      # 2. סינון חיובי: האם זה מכיל את אחד מביטויי מונדיאל 2022 (א' או ב')?
+                      if not any(pos in title for pos in POSITIVE_KEYWORDS):
+                          continue
+
                       seen_ids.add(item_id)
                       media_url = e.get("url") or e.get("webpage_url") or f"https://www.youtube.com/watch?v={item_id}"
                       items.append({"id": item_id, "url": media_url, "album": ""})
+                      print(f"Matched: {e.get('title')} ({item_id})")
                       
                       if len(items) >= MAX_ITEMS_PER_RUN:
                           break
@@ -280,6 +324,7 @@ jobs:
               --retries 5 --fragment-retries 10 \
               --sleep-requests 2.0 \
               --embed-metadata \
+              --write-subs --write-auto-subs --sub-langs "he.*,iw.*" --embed-subs \
               --remote-components ejs:github \
               --ffmpeg-location "$FFMPEG_BIN" \
               -o "$tmpl" \
